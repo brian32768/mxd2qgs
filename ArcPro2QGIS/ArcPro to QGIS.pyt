@@ -1,46 +1,26 @@
-#!/usr/bin/env python
-#
-# mxd2qgs
-# Copyright (C) 2011 Allan Maungu, 2014 Neil Freeman, 2017 Dane Low
-# Original from: https://github.com/fitnr/mxd2qgs
-# https://github.com/dnlow/mxd2qgs
-# Converts ArcMap documents to .qgs format
-# The resulting file can be opened in Quantum GIS
-# Tested on ArcGIS Pro, ArcMap 10, Python 3.6.3, and Quantum GIS 2.18.14
-#
-#-----------------------------------------------------------
-#
-# licensed under the terms of GNU GPL 2
-#
-# This program is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License along
-# with this program; if not, write to the Free Software Foundation, Inc.,
-# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
-#
-#---------------------------------------------------------------------
-
 from xml.dom.minidom import Document
 from datetime import datetime
-from os import linesep, path
-# import arcpy
+import arcpy
+
+class Toolbox(object):
+    def __init__(self):
+        """Define the toolbox (the name of the toolbox is the name of the
+        .pyt file)."""
+        self.label = "Toolbox"
+        self.alias = ""
+
+        # List of tool classes associated with this toolbox
+        self.tools = [ArcProToQGIS]
 
 class mxd2qgs(object):
-
+    
     """Conversion wrapper.
     
     Class variables:
     proj -- The ArcPro Project
     doc -- The resultant document
-    mapframes -- The list of MapFrames (DataFrames in ArcDesktop)"""
+    maps -- List of project Maps
+    layouts -- List of project layouts (if any)"""
 
     def __init__(self):
         # Assign the input file
@@ -52,8 +32,9 @@ class mxd2qgs(object):
         # Create the minidom
         self.doc = Document()
 
-        # List of "Map" objects in the project (test just first "Map" object w/ [0])
-        self.df = self.proj.listMaps()[0]
+        # List of "Map" objects in the project
+        self.maps = self.proj.listMaps()[0]
+        self.layouts = self.proj.listLayouts()
 
     def convert(self):
         '''Run conversion and write to a file'''
@@ -82,154 +63,15 @@ class mxd2qgs(object):
         # xml.dom.minidom.Document can't handle the !doctype
         return "<!DOCTYPE qgis PUBLIC 'https://svn.osgeo.org/qgis/trunk/qgis/qgis.dtd' 'SYSTEM'>" + linesep + self.doc.toxml()
 
-    def canvas(self):
+    def createMapCanvas(self):
         '''Create the <mapcanvas> element'''
-        mapcanvas = self.doc.createElement("mapcanvas")
 
-        # Create the <units> element
-        unit = self.doc.createTextNode(self.df.mapUnits)
-
-        units = self.doc.createElement("units")
-        units.appendChild(unit)
-        mapcanvas.appendChild(units)
-
-        # Create the <extent> element
-        extent = self.doc.createElement("extent")
-        mapcanvas.appendChild(extent)
-
-        # Create the <xmin> element
-        xmin = self.doc.createElement("xmin")
-        xmin.appendChild(self.doc.createTextNode(str(self.df.extent.XMin)))
-        extent.appendChild(xmin)
-
-        # Create the <ymin> element
-        ymin = self.doc.createElement("ymin")
-        ymin.appendChild(self.doc.createTextNode(str(self.df.extent.YMin)))
-        extent.appendChild(ymin)
-
-        # Create the <xmax> element
-        xmax = self.doc.createElement("xmax")
-        xmax.appendChild(self.doc.createTextNode(str(self.df.extent.XMax)))
-        extent.appendChild(xmax)
-
-        # Create the <ymax> element
-        ymax = self.doc.createElement("ymax")
-        ymax.appendChild(self.doc.createTextNode(str(self.df.extent.YMax)))
-        extent.appendChild(ymax)
-
-        # Create the <projections> element
-        projections = self.doc.createElement("projections")
-        mapcanvas.appendChild(projections)
-
-        # Create the <destinationsrs> element
-        destinationsrs = self.doc.createElement("destinationsrs")
-        mapcanvas.appendChild(destinationsrs)
-
-        # Create the <spatialrefsys> element
-        spatialrefsys = self.generate_spatial()
-        destinationsrs.appendChild(spatialrefsys)
-
-        return mapcanvas
-
-    def generate_spatial(self):
-        '''Generate spatial references for the document or a layer'''
-        spatialrefsys = self.doc.createElement("spatialrefsys")
-
-        # Create the <proj4> element
-        proj4 = self.doc.createElement("proj4")
-        spatialrefsys.appendChild(proj4)
-
-        # Create the <srsid> element
-        srsid = self.doc.createElement("srsid")
-        spatialrefsys.appendChild(srsid)
-
-        # Create the <srid> element
-        mxd_srid = self.doc.createTextNode(str(self.df.spatialReference.factoryCode))
-        srid = self.doc.createElement("srid")
-        srid.appendChild(mxd_srid)
-        spatialrefsys.appendChild(srid)
-
-        # Create the <authid> element
-        mxd_authid = self.doc.createTextNode("EPSG:" + str(self.df.spatialReference.factoryCode))
-        authid = self.doc.createElement("authid")
-        authid.appendChild(mxd_authid)
-        spatialrefsys.appendChild(authid)
-
-        # Create the <description> element
-        max_d = self.doc.createTextNode(str(self.df.spatialReference.name))
-        description = self.doc.createElement("description")
-        description.appendChild(max_d)
-        spatialrefsys.appendChild(description)
-
-        # Create the <projectionacronym> element
-        projectionacronym = self.doc.createElement("projectionacronym")
-        spatialrefsys.appendChild(projectionacronym)
-
-        # Create the <ellipsoidacronym element
-        ea = self.doc.createTextNode(str(self.df.spatialReference.name))
-        ellipsoidacronym = self.doc.createElement("ellipsoidacronym")
-        ellipsoidacronym.appendChild(ea)
-        spatialrefsys.appendChild(ellipsoidacronym)
-
-        # Create the <geographicflag> element
-        geographicflag = self.doc.createElement("geographicflag")
-        geographicflag.appendChild(self.doc.createTextNode("true"))
-        spatialrefsys.appendChild(geographicflag)
-
-        return spatialrefsys
-
-    def legend(self):
-        '''Create the <legend> element'''
-        legend = self.doc.createElement("legend")
-        mapLayers = self.mapframes.ListLayers()
-
-        for lyr in mapLayers:
-            if (lyr.isGroupLayer == False):
-
-                # Create the <legendlayer> element
-                legendlayer = self.doc.createElement("legendlayer")
-                legendlayer.setAttribute("open", "true")
-                legendlayer.setAttribute("checked", "Qt::Checked")
-                legendlayer.setAttribute("name", str(lyr.name))
-
-                legend.appendChild(legendlayer)
-
-                # Create the <filegroup> element
-                filegroup = self.doc.createElement("filegroup")
-                filegroup.setAttribute("open", "true")
-                filegroup.setAttribute("hidden", "false")
-                legendlayer.appendChild(filegroup)
-
-                # Create the <legendlayerfile> element
-                legendlayerfile = self.doc.createElement("legendlayerfile")
-                legendlayerfile.setAttribute("isInOverview", "0")
-                legendlayerfile.setAttribute("layerid", str(lyr.name) + str(20110427170816078))
-                legendlayerfile.setAttribute("visible", "1")
-                filegroup.appendChild(legendlayerfile)
-
-        return legend
-
-    def setlayerprop(self, layer, treeElemName):
-        tree = self.doc.createElement(treeElemName)
-
-        if layer.supports('visible'):
-            if layer.visible:
-                checked = 'Qt::Checked'
-            else:
-                checked = 'Qt::Unchecked'
-
-            tree.setAttribute('checked', checked)
-            tree.setAttribute('name', str(layer.name))
-
-        return tree
-
-    def layers(self):
+    def createProjectLayers(self):
         '''Create the <projectlayers> element'''
-        layerlist = self.mapframes.ListLayers();
+        layerlist = self.maps.ListLayers()
         layers = self.doc.createElement("projectlayers")
         layers.setAttribute("layercount", str(len(layerlist)))
 
-        # Layer order - create parent and a tracking list for nesting layers
         layertree = self.doc.createElement('layer-tree-group')
         treeDict = {'': layertree}
 
@@ -290,7 +132,7 @@ class mxd2qgs(object):
                 srs = self.doc.createElement("srs")
                 maplayer.appendChild(srs)
 
-                spatialrefsys = self.generate_spatial()
+                spatialrefsys = self.generate_spatial(lyr)
                 srs.appendChild(spatialrefsys)
 
                 # Create the <transparencyLevelInt> element
@@ -323,6 +165,150 @@ class mxd2qgs(object):
             layertree[parent_name].appendChild(treeLayer)
 
         return layers
+
+    def canvas(self):
+        '''Create the <mapcanvas> element'''
+        mapcanvas = self.doc.createElement("mapcanvas")
+        mapframe = self.layouts[0].listElements('MAPFRAME_ELEMENT'))
+        cam = mapframe.camera
+
+        # Create the <units> element
+        unit = self.doc.createTextNode(self.df.mapUnits)
+
+        units = self.doc.createElement("units")
+        units.appendChild(unit)
+        mapcanvas.appendChild(units)
+
+        # Create the <extent> element
+        extent = self.doc.createElement("extent")
+        mapcanvas.appendChild(extent)
+
+        # Create the <xmin> element
+        xmin = self.doc.createElement("xmin")
+        xmin.appendChild(self.doc.createTextNode(str(cam.getExtent().XMin)))
+        extent.appendChild(xmin)
+
+        # Create the <ymin> element
+        ymin = self.doc.createElement("ymin")
+        ymin.appendChild(self.doc.createTextNode(str(cam.getExtent().YMin)))
+        extent.appendChild(ymin)
+
+        # Create the <xmax> element
+        xmax = self.doc.createElement("xmax")
+        xmax.appendChild(self.doc.createTextNode(str(cam.getExtent().XMax)))
+        extent.appendChild(xmax)
+
+        # Create the <ymax> element
+        ymax = self.doc.createElement("ymax")
+        ymax.appendChild(self.doc.createTextNode(str(cam.getExtent().YMax)))
+        extent.appendChild(ymax)
+
+        # Create the <projections> element
+        projections = self.doc.createElement("projections")
+        mapcanvas.appendChild(projections)
+
+        # Create the <destinationsrs> element
+        destinationsrs = self.doc.createElement("destinationsrs")
+        mapcanvas.appendChild(destinationsrs)
+
+        # Create the <spatialrefsys> element
+        spatialrefsys = self.generate_spatial(mapframe)
+        destinationsrs.appendChild(spatialrefsys)
+
+        return mapcanvas
+
+    def generate_spatial(self, lyr):
+        '''Generate spatial references for the document or a layer'''
+        spatialrefsys = self.doc.createElement("spatialrefsys")
+        sr = arcpy.Describe(lyr).spatialReference
+
+        # Create the <proj4> element
+        proj4 = self.doc.createElement("proj4")
+        spatialrefsys.appendChild(proj4)
+
+        # Create the <srsid> element
+        srsid = self.doc.createElement("srsid")
+        spatialrefsys.appendChild(srsid)
+
+        # Create the <srid> element
+        mxd_srid = self.doc.createTextNode(str(sr.factoryCode))
+        srid = self.doc.createElement("srid")
+        srid.appendChild(mxd_srid)
+        spatialrefsys.appendChild(srid)
+
+        # Create the <authid> element
+        mxd_authid = self.doc.createTextNode("EPSG:" + str(sr.factoryCode))
+        authid = self.doc.createElement("authid")
+        authid.appendChild(mxd_authid)
+        spatialrefsys.appendChild(authid)
+
+        # Create the <description> element
+        max_d = self.doc.createTextNode(str(sr.name))
+        description = self.doc.createElement("description")
+        description.appendChild(max_d)
+        spatialrefsys.appendChild(description)
+
+        # Create the <projectionacronym> element
+        projectionacronym = self.doc.createElement("projectionacronym")
+        spatialrefsys.appendChild(projectionacronym)
+
+        # Create the <ellipsoidacronym element
+        ea = self.doc.createTextNode(str(sr.name))
+        ellipsoidacronym = self.doc.createElement("ellipsoidacronym")
+        ellipsoidacronym.appendChild(ea)
+        spatialrefsys.appendChild(ellipsoidacronym)
+
+        # Create the <geographicflag> element
+        geographicflag = self.doc.createElement("geographicflag")
+        geographicflag.appendChild(self.doc.createTextNode("true"))
+        spatialrefsys.appendChild(geographicflag)
+
+        return spatialrefsys
+
+    def legend(self):
+        '''Create the <legend> element'''
+        legend = self.doc.createElement("legend")
+        mapLayers = self.maps.ListLayers()
+
+        for lyr in mapLayers:
+            if (lyr.isGroupLayer == False):
+
+                # Create the <legendlayer> element
+                legendlayer = self.doc.createElement("legendlayer")
+                legendlayer.setAttribute("open", "true")
+                legendlayer.setAttribute("checked", "Qt::Checked")
+                legendlayer.setAttribute("name", str(lyr.name))
+
+                legend.appendChild(legendlayer)
+
+                # Create the <filegroup> element
+                filegroup = self.doc.createElement("filegroup")
+                filegroup.setAttribute("open", "true")
+                filegroup.setAttribute("hidden", "false")
+                legendlayer.appendChild(filegroup)
+
+                # Create the <legendlayerfile> element
+                legendlayerfile = self.doc.createElement("legendlayerfile")
+                legendlayerfile.setAttribute("isInOverview", "0")
+                legendlayerfile.setAttribute("layerid", str(lyr.name) + str(20110427170816078))
+                legendlayerfile.setAttribute("visible", "1")
+                filegroup.appendChild(legendlayerfile)
+
+        return legend
+
+    def setlayerprop(self, layer, treeElemName):
+        tree = self.doc.createElement(treeElemName)
+
+        if layer.supports('visible'):
+            if layer.visible:
+                checked = 'Qt::Checked'
+            else:
+                checked = 'Qt::Unchecked'
+
+            tree.setAttribute('checked', checked)
+            tree.setAttribute('name', str(layer.name))
+
+        return tree
 
     def symbol(self):
         '''Create and populate a dummy symbol element'''
@@ -386,44 +372,43 @@ class mxd2qgs(object):
         symbol.appendChild(texturepath)
 
 
-def main():
-    from optparse import OptionParser
-    import sys
+class ArcProToQGIS(object):
+    def __init__(self):
+        """Define the tool (tool name is the name of the class)."""
+        self.label = "Save to .gis file format"
+        self.description = "Tool to use for saving an ArcPro Project to a Quantum GIS File"
+        self.canRunInBackground = False
 
-    parser = OptionParser(
-        usage='%prog MXD [options] ',
-        description='Convert an MXD file to QGS format. Requires ArcPy.',
-        epilog='If neither -q or -s are set, file is output to stdout.'
-    )
+    def getParameterInfo(self):
+        """Define parameter definitions"""
+        outputFile = arcpy.Parameter (
+            displayName="GIS Output File",
+            name="GIS_Output_File",
+            datatype="File",
+            parameterType="Required",
+            direction="Output"
+        )
+        params = [outputFile]
+        return params
 
-    parser.add_option('-q', '--qgs', type=str, dest='DEST', help='destination of the new QGIS file')
-    parser.add_option('-s', '--same', action='store_true', help='save a file with a similar name to MXD, but ending in .qgs (ignored if -q is set)')
+    def isLicensed(self):
+        """Set whether tool is licensed to execute."""
+        return True
 
-    options, args = parser.parse_args()
+    def updateParameters(self, parameters):
+        """Modify the values and properties of parameters before internal
+        validation is performed.  This method is called whenever a parameter
+        has been changed."""
+        return
 
-    try:
-        m2q = mxd2qgs(args[0])
+    def updateMessages(self, parameters):
+        """Modify the messages created by internal validation for each tool
+        parameter.  This method is called after internal validation."""
+        return
 
-        if options.qgs:
-            handle = open(options.qgs, "w")
-
-        elif options.same:
-            filename = path.join(path.dirname(args[0]), path.basename(args[0])[:-3] + 'qgs')
-            handle = open(filename, "w")
-
-        else:
-            handle = sys.stdout
-
-        result = m2q.convert()
-
-        # Write to qgis file
-        handle.write(result)
-        handle.close()
-
-    except (Exception, e):
-        sys.stderr.write(e.message)
-        sys.exit(1)
-
-
-if __name__ == '__main__':
-    main()
+    def execute(self, parameters, messages):
+        """The source code of the tool."""
+        converter = mxd2qgs()
+        outfile = parameters[0].valueAsText
+        converter.convert()
+        return
